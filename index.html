@@ -125,14 +125,44 @@ var uid=function(){return Math.random().toString(36).slice(2,10)}, esc=function(
 var clean=function(s){return String(s||'').replace(/\s+/g,' ').trim()}, n=function(v,d){var x=parseInt(v,10);return isNaN(x)?d:x};
 var toast=function(m){var e=$('#toast');e.textContent=m;e.classList.add('show');clearTimeout(window.__tt);window.__tt=setTimeout(function(){e.classList.remove('show')},2300)};
 
-function newGroup(name,teams){return{id:uid(),name:name,teams:teams.map(function(x){return{id:uid(),name:x,players:[]}})}}
+function newGroup(name,teams){
+  return{id:uid(),name:name,teams:teams.map(function(x){
+    if(typeof x==='string')return{id:uid(),name:x,players:[]};
+    return{id:uid(),name:x.name,players:(x.players||[]).slice()};
+  })}
+}
+var DEFAULT_ROSTERS={
+  'North Bengal FC':[
+    'Debajyoti Pandit','Rishav Jana','Tanishq','Atharva parkhi','Sambhav','Yash Kumar Singh','Debjeet Chanda'
+  ],
+  'Bardhaman FC':[
+    'Anjan Mishra','Soumik Debnath','Hemanth Dhumale','Pritam Jana','Rupan Kar','ANKAN KISKU','Rindam Ray Mandal'
+  ],
+  'Falcons of North 24 Parganas':[
+    'Raazdeep Roy','Sarbasish Chowdhury','Shorya srimany','Aayushman','Ishan Shamanta','Anubhav Vishal','Shourya Choudhury'
+  ],
+  'Hooghly Hunters':[
+    'ROHAN PAL','Ashutosh Kumar','Aryan shetty','Aniket Sarkar','Vineet','Joy Deep Acharya','Aditya Mondal','wrick samanta'
+  ],
+  'Kolkata Royals':[
+    'Niloy Mondal','Sawan Kumara Yadav','Nikhil kumar','Snehal Bhagat','Soumyadeep Raj','Sharhaan','Kousik Sikdar'
+  ],
+  'Nadia Nawaabz':[
+    'Sounak Pal','Meghraj','Sumanth Gudihal','Soham Ghosh','Lakshay Singhal','SHATAYU','Kinjal Barman'
+  ]
+};
+
+function makeDefaultTeams(names){
+  return names.map(function(name){return{name:name,players:(DEFAULT_ROSTERS[name]||[]).slice()}});
+}
+
 function defaultState(){
   return {
     title:'Bongoshongho Super League S-2',
     settings:{win:3,draw:1,loss:0,qualify:2},
     groups:[
-      newGroup('Group A',['Nadia Nawaabz','Hooghly Hunters','Kolkata Royals']),
-      newGroup('Group B',['Falcons of North 24 Parganas','Bardhaman FC','North Bengal FC'])
+      newGroup('Group A',makeDefaultTeams(['Nadia Nawaabz','Hooghly Hunters','Kolkata Royals'])),
+      newGroup('Group B',makeDefaultTeams(['Falcons of North 24 Parganas','Bardhaman FC','North Bengal FC']))
     ],
     matches:[],manual:{},
     knockout:{
@@ -159,12 +189,46 @@ function statNorm(s){return{side:s.side==='away'?'away':'home',player:String(s.p
 function load(){try{var x=localStorage.getItem(KEY);return x?normalize(JSON.parse(x)):defaultState()}catch(e){return defaultState()}}
 var state=load(),tab='standings',draft=null,matchMode='group',matchFilter='all';
 
+function applyDefaultRosters(){
+  var changed=false;
+  function findRoster(name){
+    var key=clean(name).toLowerCase();
+    for(var k in DEFAULT_ROSTERS){
+      if(clean(k).toLowerCase()===key)return DEFAULT_ROSTERS[k];
+    }
+    return null;
+  }
+  state.groups.forEach(function(g){
+    g.teams.forEach(function(t){
+      var roster=findRoster(t.name);
+      if(roster){
+        if(!Array.isArray(t.players))t.players=[];
+        var existing=t.players.map(clean).filter(Boolean);
+        roster.forEach(function(p){
+          if(existing.map(function(x){return x.toLowerCase()}).indexOf(p.toLowerCase())<0){
+            t.players.push(p); changed=true;
+          }
+        });
+      }
+    });
+  });
+  if(changed)save();
+}
+applyDefaultRosters();
+
 function save(){try{localStorage.setItem(KEY,JSON.stringify(state))}catch(e){}}
 function team(id){for(var g of state.groups)for(var t of g.teams)if(t.id===id)return t;return null}
 function tname(id){var t=team(id);return t?t.name||'(unnamed team)':'TBD'}
 function gname(id){var g=state.groups.find(function(x){return x.id===id});return g?g.name:'Group Stage'}
 function allTeams(){return state.groups.flatMap(function(g){return g.teams})}
-function playersFor(id){var t=team(id);return t?t.players:[]}
+function playersFor(id){
+  var t=team(id);if(!t)return [];
+  if(!Array.isArray(t.players))t.players=[];
+  var key=clean(t.name).toLowerCase(),roster=null;
+  for(var k in DEFAULT_ROSTERS){if(clean(k).toLowerCase()===key){roster=DEFAULT_ROSTERS[k];break}}
+  if(roster){roster.forEach(function(p){if(t.players.map(clean).map(function(x){return x.toLowerCase()}).indexOf(p.toLowerCase())<0)t.players.push(p)});}
+  return t.players;
+}
 function score(m){var h=0,a=0;(m.goals||[]).forEach(function(g){if(g.side==='home')h+=g.n;else a+=g.n});return[h,a]}
 function statForMatch(m,side,key){var map={};(m.stats||[]).forEach(function(s){if(s.side!==side||!clean(s.player))return;var k=s.player.toLowerCase();map[k]=(map[k]||{name:s.player,n:0});map[k].n+=s[key]||0});return Object.values(map)}
 function teamStats(ids,matches){
